@@ -18,6 +18,7 @@ interface CartState {
   metodoPagoId: number;
   porcentajeIva: number;
   observaciones: string;
+  loadedFromDuplicate: boolean;
 
   // Computed
   subtotal: number;
@@ -33,6 +34,19 @@ interface CartState {
   setObservaciones: (obs: string) => void;
   clearCart: () => void;
   recalculate: () => void;
+  setLoadedFromDuplicate: (val: boolean) => void;
+  loadFromDuplicate: (
+    clienteId: number,
+    clienteNombre: string,
+    items: {
+      productoId: number;
+      productoCodigo: string;
+      productoNombre: string;
+      precioUnitario: number;
+      cantidadSolicitada: number;
+      stockActual: number;
+    }[]
+  ) => void;
 }
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -42,9 +56,12 @@ export const useCartStore = create<CartState>((set, get) => ({
   metodoPagoId: 1,
   porcentajeIva: 15,
   observaciones: '',
+  loadedFromDuplicate: false,
   subtotal: 0,
   montoIva: 0,
   total: 0,
+
+  setLoadedFromDuplicate: (val) => set({ loadedFromDuplicate: val }),
 
   addItem: (producto, cantidad = 1) => {
     const items = [...get().items];
@@ -99,6 +116,28 @@ export const useCartStore = create<CartState>((set, get) => ({
       montoIva: 0,
       total: 0,
     }),
+
+  loadFromDuplicate: (clienteId, clienteNombre, items) => {
+    const cartItems = items.map(i => ({
+      productoId: i.productoId,
+      codigo: i.productoCodigo,
+      nombre: i.productoNombre,
+      precio: i.precioUnitario,
+      cantidad: i.cantidadSolicitada,
+      subtotal: i.precioUnitario * i.cantidadSolicitada,
+      stockDisponible: i.stockActual,
+    }));
+
+    set({
+      items: cartItems,
+      clienteId,
+      clienteNombre,
+      metodoPagoId: 1,
+      observaciones: '',
+      loadedFromDuplicate: true,
+    });
+    get().recalculate();
+  },
 
   recalculate: () => {
     const { items, porcentajeIva } = get();

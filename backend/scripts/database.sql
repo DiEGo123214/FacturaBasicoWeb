@@ -54,7 +54,8 @@ CREATE TABLE Usuarios (
 GO
 
 -- Índice para búsquedas por Email
-CREATE NONCLUSTERED INDEX IX_Usuarios_Email ON Usuarios(Email);
+CREATE UNIQUE NONCLUSTERED INDEX IX_Usuarios_Cedula ON Usuarios(Cedula) WHERE Cedula IS NOT NULL;
+CREATE UNIQUE NONCLUSTERED INDEX IX_Usuarios_Email ON Usuarios(Email);
 GO
 
 -- ============================================================
@@ -94,7 +95,8 @@ GO
 -- Índices para búsquedas frecuentes por Nombre y Apellido
 CREATE NONCLUSTERED INDEX IX_Clientes_Nombre ON Clientes(Nombre);
 CREATE NONCLUSTERED INDEX IX_Clientes_Apellido ON Clientes(Apellido);
-CREATE NONCLUSTERED INDEX IX_Clientes_Email ON Clientes(Email);
+CREATE UNIQUE NONCLUSTERED INDEX IX_Clientes_Email ON Clientes(Email) WHERE Email IS NOT NULL;
+CREATE UNIQUE NONCLUSTERED INDEX IX_Clientes_Telefono ON Clientes(Telefono) WHERE Telefono IS NOT NULL;
 GO
 
 -- ============================================================
@@ -237,10 +239,11 @@ GO
 --           Cedula, Email, RoleId, Activo, Bloqueado,
 --           IntentosFallidos, RefreshToken, RefreshTokenExpiryTime
 -- Nota: FechaCreacion usa DEFAULT GETUTCDATE()
--- Password: admin123 (hash BCrypt)
+-- Password: Admin123! (hash BCrypt)
 -- -------------------------------------------------------
-INSERT INTO Usuarios (Username, PasswordHash, Nombre, Apellido, Cedula, Email, RoleId, Activo, Bloqueado, IntentosFallidos, RefreshToken, RefreshTokenExpiryTime) VALUES
-    ('admin', '$2b$10$Z2YI9ily8/8OGNFtSvCuP.28PSxuHbAZJLVTWFRWoFy9Qkpir809O', 'Admin', 'Sistema', NULL, 'admin@pos.com', 1, 1, 0, 0, NULL, NULL);
+INSERT INTO Usuarios (Username,PasswordHash,Nombre,Apellido,Cedula,Email,RoleId,Activo,Bloqueado,IntentosFallidos,FechaCreacion,RefreshToken,RefreshTokenExpiryTime)
+VALUES ('admin','$2a$10$8Wi4qkRoWLqIEMF5yG9l8eCD6V9Db4ZPJGch/raTTVH95ModZSDs.','Administrador','Sistema','1802288996','admin@empresa.com',1,1,0,0,GETDATE(),NULL,NULL);
+
 GO
 
 -- -------------------------------------------------------

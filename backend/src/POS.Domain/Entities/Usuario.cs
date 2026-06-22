@@ -21,4 +21,8 @@ public class Usuario
 
     // Navegación
     public Rol? Role { get; set; }
+
+    // Reset de contraseña
+    // public string? PasswordResetToken { get; set; }
+    // public DateTime? PasswordResetTokenExpiry { get; set; }
 }

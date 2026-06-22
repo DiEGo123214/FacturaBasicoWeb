@@ -17,7 +17,7 @@ public class ProductoRepository : IProductoRepository
         int page = 1,
         int pageSize = 25)
     {
-        var query = _db.Productos.AsNoTracking().AsQueryable();
+        var query = _db.Productos.AsNoTracking().Where(p => p.Activo).AsQueryable();
 
         // Si hay búsqueda, filtra y devuelve un slice pequeño (máx 50) sin paginación estricta
         if (!string.IsNullOrWhiteSpace(search))
@@ -30,8 +30,6 @@ public class ProductoRepository : IProductoRepository
                 query = query.Where(p => p.Nombre.Contains(search) || p.Codigo.Contains(search));
 
             // Búsqueda: devuelve hasta 50 resultados ordenados, sin paginación pesada
-            var searchResults = await query.OrderBy(p => p.Nombre).Take(50).ToListAsync();
-            return (searchResults, searchResults.Count);
         }
 
         // Sin búsqueda: paginación del servidor
@@ -50,7 +48,7 @@ public class ProductoRepository : IProductoRepository
     }
 
     public async Task<Producto?> GetByIdAsync(int id) =>
-        await _db.Productos.FindAsync(id);
+    await _db.Productos.FirstOrDefaultAsync(p => p.Id == id && p.Activo);
 
     public async Task<Producto?> GetByCodigoAsync(string codigo) =>
         await _db.Productos.FirstOrDefaultAsync(p => p.Codigo == codigo);

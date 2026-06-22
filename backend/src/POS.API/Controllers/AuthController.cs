@@ -21,7 +21,7 @@ public class AuthController : ControllerBase
         try
         {
             var response = await _mediator.Send(command);
-            
+
             if (response == null)
             {
                 return Unauthorized(new { error = "Usuario o contraseña incorrectos." });
@@ -41,7 +41,7 @@ public class AuthController : ControllerBase
         try
         {
             var response = await _mediator.Send(command);
-            
+
             if (response == null)
             {
                 return Unauthorized(new { error = "Token de refresco inválido o expirado." });
@@ -54,4 +54,20 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    // [HttpPost("forgot-password")]
+    // public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordCommand command)
+    // {
+    //     await _mediator.Send(command);
+    //     return Ok(new { message = "Si el correo existe, recibirás un enlace para restablecer tu contraseña." });
+    // }
+
+    // [HttpPost("reset-password")]
+    // public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordCommand command)
+    // {
+    //     var result = await _mediator.Send(command);
+    //     if (!result)
+    //         return BadRequest(new { error = "Token inválido o expirado." });
+    //     return Ok(new { message = "Contraseña restablecida correctamente." });
+    // }
 }

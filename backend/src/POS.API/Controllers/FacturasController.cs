@@ -108,6 +108,20 @@ public class FacturasController : ControllerBase
         }
     }
 
+    [HttpGet("{id}/duplicar")]
+    public async Task<ActionResult<DuplicarFacturaDto>> Duplicar(int id)
+    {
+        var result = await _mediator.Send(new GetFacturaParaDuplicarQuery(id));
+        return result is null ? NotFound(new { error = $"No se encontró factura con ID {id}." }) : Ok(result);
+    }
+
+    [HttpGet("{id}/verificar-paridad")]
+    public async Task<ActionResult<VerificarParidadDto>> VerificarParidad(int id)
+    {
+        var result = await _mediator.Send(new GetVerificarParidadQuery(id));
+        return result is null ? NotFound(new { error = $"No se encontró factura con ID {id}." }) : Ok(result);
+    }
+
     [HttpGet("reconstruir/{numeroFactura}")]
     public async Task<ActionResult<FacturaSnapshotDto>> Reconstruir(string numeroFactura)
     {

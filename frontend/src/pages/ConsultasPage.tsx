@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { facturasApi } from '../api';
 import type { Factura } from '../api';
 import Modal from '../components/Modal';
-import { EyeIcon, MagnifyingGlassIcon, ClockIcon, ChevronDownIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, MagnifyingGlassIcon, ClockIcon, ChevronDownIcon, DocumentArrowDownIcon, DocumentDuplicateIcon, ClipboardIcon } from '@heroicons/react/24/outline';
 import TablePagination from '../components/TablePagination';
+import { getSearchInputMode, getSearchMaxLength, getSearchPlaceholder, sanitizeSearchValue, type SearchInputKind } from '../utils/searchInput';
+import { useCartStore } from '../store/cartStore';
 
 export default function ConsultasPage() {
+  const navigate = useNavigate();
+  const cart = useCartStore();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [search, setSearch] = useState('');
   const [searchEntity, setSearchEntity] = useState('factura');
@@ -16,9 +21,12 @@ export default function ConsultasPage() {
   const [detalle, setDetalle] = useState<Factura | null>(null);
   const [confirmAnular, setConfirmAnular] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [duplicateErrorData, setDuplicateErrorData] = useState<any | null>(null);
+  const [parityErrorData, setParityErrorData] = useState<any | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -34,7 +42,7 @@ export default function ConsultasPage() {
         hasta: hasta || undefined,
       });
       setFacturas(Array.isArray(data) ? data : []);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -44,6 +52,47 @@ export default function ConsultasPage() {
 
   const totalPages = Math.ceil((facturas?.length || 0) / pageSize);
   const paginatedFacturas = (facturas || []).slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const searchKind: SearchInputKind = searchEntity === 'factura'
+    ? 'documento'
+    : clienteSearchType === 'cliente_identificacion'
+      ? 'cedula'
+      : 'letras';
+
+  const getConsultasSearchKind = (entity: string, clientType: string): SearchInputKind => {
+    if (entity === 'factura') return 'documento';
+    return clientType === 'cliente_identificacion' ? 'cedula' : 'letras';
+  };
+
+  const handleSearchEntityChange = (value: string) => {
+    const nextKind = getConsultasSearchKind(value, clienteSearchType);
+    setSearchEntity(value);
+    setSearch(sanitizeSearchValue(search, nextKind));
+  };
+
+  const handleClienteSearchTypeChange = (value: string) => {
+    const nextKind = getConsultasSearchKind(searchEntity, value);
+    setClienteSearchType(value);
+    setSearch(sanitizeSearchValue(search, nextKind));
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(sanitizeSearchValue(value, searchKind));
+  };
+
+  const handleDesdeChange = (value: string) => {
+    setDesde(value);
+    if (hasta && value && hasta < value) {
+      setHasta(value);
+    }
+  };
+
+  const handleHastaChange = (value: string) => {
+    if (desde && value && value < desde) {
+      setHasta(desde);
+      return;
+    }
+    setHasta(value);
+  };
 
   const descargarPdf = async (id: number, numero: string) => {
     try {
@@ -71,17 +120,53 @@ export default function ConsultasPage() {
     }
   };
 
+  const handleDuplicar = async (id: number) => {
+    try {
+      const { data } = await facturasApi.duplicar(id);
+      if (data.todosDisponibles) {
+        cart.loadFromDuplicate(data.clienteId, data.clienteNombre, data.items);
+        navigate('/facturacion');
+      } else {
+        setDuplicateErrorData(data);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Error al intentar duplicar la factura.');
+    }
+  };
+
+  const handleCopiarVenta = async (id: number) => {
+    try {
+      const { data } = await facturasApi.verificarParidad(id);
+      if (data.puedeCopiarse) {
+        const mappedItems = data.items.map(i => ({
+          productoId: i.productoId,
+          productoCodigo: i.productoCodigo || '',
+          productoNombre: i.productoNombre || '',
+          precioUnitario: i.precioUnitario,
+          cantidadSolicitada: i.cantidad,
+          stockActual: i.stockActual || 999
+        }));
+        cart.loadFromDuplicate(data.clienteId, data.clienteNombre, mappedItems);
+        navigate('/facturacion');
+      } else {
+        setParityErrorData(data);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Error al verificar la paridad de la factura.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm">
         <div className="flex items-center gap-4">
-           <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/20">
-             <MagnifyingGlassIcon className="w-7 h-7 text-white" />
-           </div>
-           <div>
+          <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/20">
+            <MagnifyingGlassIcon className="w-7 h-7 text-white" />
+          </div>
+          <div>
             <h1 className="text-2xl font-black text-zinc-800 tracking-tighter">Consultas de <span className="text-emerald-600">Ventas</span></h1>
             <p className="text-zinc-400 font-bold text-[10px] uppercase tracking-widest">Historial de Comprobantes</p>
-           </div>
+          </div>
         </div>
         <div className="flex items-center gap-3 bg-emerald-50 px-6 py-3 rounded-2xl border border-emerald-100">
           <ClockIcon className="w-6 h-6 text-emerald-600 animate-pulse" />
@@ -100,28 +185,47 @@ export default function ConsultasPage() {
       <div className="bg-white rounded-2xl border border-zinc-200 p-6 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2 flex gap-2 p-1.5 bg-zinc-50 border border-zinc-200 rounded-xl">
+            <div className="relative">
+              <select value={searchEntity} onChange={e => handleSearchEntityChange(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 h-full w-[150px]">
+                <option value="factura" className="bg-white text-zinc-800">Nº Doc</option>
+                <option value="cliente" className="bg-white text-zinc-800">Cliente</option>
+              </select>
+              <ChevronDownIcon className="w-3.5 h-3.5 text-white absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            {searchEntity === 'cliente' && (
               <div className="relative">
-                <select value={searchEntity} onChange={e => setSearchEntity(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 h-full w-[150px]">
-                  <option value="factura" className="bg-white text-zinc-800">Nº Doc</option>
-                  <option value="cliente" className="bg-white text-zinc-800">Cliente</option>
+                <select value={clienteSearchType} onChange={e => handleClienteSearchTypeChange(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 h-full w-[150px]">
+                  <option value="cliente_identificacion" className="bg-white text-zinc-800">Cédula</option>
+                  <option value="cliente_nombre" className="bg-white text-zinc-800">Nombre</option>
+                  <option value="cliente_apellido" className="bg-white text-zinc-800">Apellido</option>
                 </select>
                 <ChevronDownIcon className="w-3.5 h-3.5 text-white absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
-              {searchEntity === 'cliente' && (
-                <div className="relative">
-                  <select value={clienteSearchType} onChange={e => setClienteSearchType(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 h-full w-[150px]">
-                    <option value="cliente_identificacion" className="bg-white text-zinc-800">Cédula</option>
-                    <option value="cliente_nombre" className="bg-white text-zinc-800">Nombre</option>
-                    <option value="cliente_apellido" className="bg-white text-zinc-800">Apellido</option>
-                  </select>
-                  <ChevronDownIcon className="w-3.5 h-3.5 text-white absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              )}
-              <input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
-                className="flex-1 bg-transparent text-zinc-800 px-3 text-sm font-bold outline-none placeholder:text-zinc-400" />
+            )}
+            <input placeholder={getSearchPlaceholder(searchKind)} value={search} onChange={e => handleSearchChange(e.target.value)} maxLength={getSearchMaxLength(searchKind)} inputMode={getSearchInputMode(searchKind)}
+              className="flex-1 bg-transparent text-zinc-800 px-3 text-sm font-bold outline-none placeholder:text-zinc-400" />
           </div>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold" />
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Desde</label>
+            <input
+              type="date"
+              value={desde}
+              max={today}
+              onChange={e => handleDesdeChange(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Hasta</label>
+            <input
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              max={today}
+              onChange={e => handleHastaChange(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
@@ -157,11 +261,17 @@ export default function ConsultasPage() {
                   </span>
                 </td>
                 <td className="px-6 py-5 text-right">
-                   <p className="text-lg font-black text-emerald-600 font-mono tracking-tighter">${f.total?.toFixed(2)}</p>
+                  <p className="text-lg font-black text-emerald-600 font-mono tracking-tighter">${f.total?.toFixed(2)}</p>
                 </td>
                 <td className="px-6 py-5 flex justify-center gap-2">
-                  <button onClick={() => setDetalle(f)} className="p-2.5 text-zinc-400 hover:text-emerald-600 bg-zinc-50 border border-zinc-200 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all"><EyeIcon className="w-4.5 h-4.5" /></button>
-                  <button onClick={() => descargarPdf(f.id, f.numeroFactura)} className="p-2.5 text-zinc-400 hover:text-emerald-600 bg-zinc-50 border border-zinc-200 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all"><DocumentArrowDownIcon className="w-4.5 h-4.5" /></button>
+                  <button onClick={() => setDetalle(f)} title="Ver Detalle" className="p-2.5 text-zinc-400 hover:text-emerald-600 bg-zinc-50 border border-zinc-200 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all"><EyeIcon className="w-4.5 h-4.5" /></button>
+                  <button onClick={() => descargarPdf(f.id, f.numeroFactura)} title="Descargar PDF" className="p-2.5 text-zinc-400 hover:text-emerald-600 bg-zinc-50 border border-zinc-200 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all"><DocumentArrowDownIcon className="w-4.5 h-4.5" /></button>
+                  <button onClick={() => handleDuplicar(f.id)} className="p-2.5 text-zinc-400 hover:text-indigo-600 bg-zinc-50 border border-zinc-200 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl transition-all">
+                    Duplicar
+                  </button>
+                  <button onClick={() => handleCopiarVenta(f.id)} className="p-2.5 text-zinc-400 hover:text-emerald-600 bg-zinc-50 border border-zinc-200 hover:border-emerald-200 hover:bg-emerald-50 rounded-xl transition-all">
+                    Copiar
+                  </button>
                 </td>
               </tr>
             ))}
@@ -173,7 +283,7 @@ export default function ConsultasPage() {
       <Modal isOpen={!!detalle} onClose={() => setDetalle(null)} title={`RECIBO DE VENTA - ${detalle?.numeroFactura}`}>
         {detalle && (
           <div className="bg-white rounded-2xl p-8 shadow-xl text-zinc-800 relative overflow-hidden">
-            
+
             {/* Elemento de diseño de fondo */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -z-10 pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
 
@@ -211,60 +321,61 @@ export default function ConsultasPage() {
 
             {/* Tabla de Productos */}
             <div className="border border-zinc-200 rounded-xl overflow-hidden mb-8 shadow-sm">
-               <table className="w-full text-left">
-                  <thead className="bg-emerald-600">
-                    <tr>
-                      <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest">Descripción</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-center">Cant</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-right">P. Unit</th>
-                      <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-right">Subtotal</th>
+              <table className="w-full text-left">
+                <thead className="bg-emerald-600">
+                  <tr>
+                    <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest">Descripción</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-center">Cant</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-right">P. Unit</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {detalle.detalles?.map((item: any, i: number) => (
+                    <tr key={i} className="hover:bg-emerald-50/50 transition-colors">
+                      <td className="px-4 py-3 text-xs font-bold text-zinc-700">{item.productoNombre}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-zinc-500 text-center">{item.cantidad}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-zinc-500 text-right">${item.precioUnitario.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-emerald-700 font-black text-right">${item.subtotal.toFixed(2)}</td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {detalle.detalles?.map((item: any, i: number) => (
-                      <tr key={i} className="hover:bg-emerald-50/50 transition-colors">
-                        <td className="px-4 py-3 text-xs font-bold text-zinc-700">{item.productoNombre}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-zinc-500 text-center">{item.cantidad}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-zinc-500 text-right">${item.precioUnitario.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-xs font-mono text-emerald-700 font-black text-right">${item.subtotal.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-               </table>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             {/* Totales y Cajero */}
             <div className="flex justify-between items-end mb-8">
               <div className="bg-zinc-50 px-4 py-3 rounded-xl border border-zinc-100">
-                 <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Atendido por:</p>
-                 <p className="text-xs font-black text-zinc-700">{detalle.vendedorNombre}</p>
+                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Atendido por:</p>
+                <p className="text-xs font-black text-zinc-700">{detalle.vendedorNombre}</p>
               </div>
 
               <div className="flex flex-col items-end gap-2 min-w-[200px]">
-                 <div className="flex justify-between w-full text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                   <span>Subtotal</span>
-                   <span className="font-mono text-zinc-700">${detalle.subtotal?.toFixed(2)}</span>
-                 </div>
-                 <div className="flex justify-between w-full text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                   <span>IVA ({detalle.porcentajeIva}%)</span>
-                   <span className="font-mono text-zinc-700">${detalle.montoIva?.toFixed(2)}</span>
-                 </div>
-                 <div className="flex justify-between w-full text-sm font-black text-emerald-800 uppercase tracking-widest mt-2 bg-emerald-100 px-4 py-2 rounded-xl border border-emerald-200">
-                   <span>Total</span>
-                   <span className="font-mono">${detalle.total?.toFixed(2)}</span>
-                 </div>
+                <div className="flex justify-between w-full text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                  <span>Subtotal</span>
+                  <span className="font-mono text-zinc-700">${detalle.subtotal?.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between w-full text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                  <span>IVA ({detalle.porcentajeIva}%)</span>
+                  <span className="font-mono text-zinc-700">${detalle.montoIva?.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between w-full text-sm font-black text-emerald-800 uppercase tracking-widest mt-2 bg-emerald-100 px-4 py-2 rounded-xl border border-emerald-200">
+                  <span>Total</span>
+                  <span className="font-mono">${detalle.total?.toFixed(2)}</span>
+                </div>
               </div>
             </div>
 
             {/* Acciones */}
             {!confirmAnular ? (
               <div className="flex justify-end gap-3 pt-6 border-t-2 border-emerald-500/10">
-                 <button onClick={() => setConfirmAnular(true)} disabled={detalle.estado === 'ANULADA'} className="px-6 py-2.5 border-2 border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 rounded-xl text-[10px] font-black uppercase disabled:opacity-30 transition-all">
-                   Anular Factura
-                 </button>
-                 <button onClick={() => descargarPdf(detalle.id, detalle.numeroFactura)} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2">
-                   <DocumentArrowDownIcon className="w-4 h-4" /> Exportar PDF
-                 </button>
+                <button onClick={() => setConfirmAnular(true)} disabled={detalle.estado === 'ANULADA'} className="px-6 py-2.5 border-2 border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 rounded-xl text-[10px] font-black uppercase disabled:opacity-30 transition-all">
+                  Anular Factura
+                </button>
+
+                <button onClick={() => descargarPdf(detalle.id, detalle.numeroFactura)} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-2">
+                  <DocumentArrowDownIcon className="w-4 h-4" /> Exportar PDF
+                </button>
               </div>
             ) : (
               <div className="mt-6 bg-red-50 border-2 border-red-200 rounded-xl p-5 animate-[fadeIn_0.3s_ease-out]">
@@ -287,6 +398,90 @@ export default function ConsultasPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={!!duplicateErrorData} onClose={() => setDuplicateErrorData(null)} title="No se puede duplicar la factura">
+        {duplicateErrorData && (
+          <div>
+            <p className="text-sm text-zinc-900 mb-4">
+              Los siguientes productos no tienen stock suficiente:
+            </p>
+
+            <div className="border border-zinc-200 rounded-xl overflow-hidden mb-5">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-zinc-100 text-zinc-600">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Codigo</th>
+                    <th className="px-4 py-2 font-semibold">Producto</th>
+                    <th className="px-4 py-2 font-semibold text-center">Solicitado</th>
+                    <th className="px-4 py-2 font-semibold text-center">Disponible</th>
+                    <th className="px-4 py-2 font-semibold text-center">Faltan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {duplicateErrorData.items
+                    .filter((item: any) => !item.tieneStock)
+                    .map((item: any) => (
+                      <tr key={item.productoId}>
+                        <td className="px-4 py-2 text-zinc-500 font-mono text-xs">{item.productoCodigo}</td>
+                        <td className="px-4 py-2 text-zinc-800">{item.productoNombre}</td>
+                        <td className="px-4 py-2 text-center text-zinc-700">{item.cantidadSolicitada}</td>
+                        <td className="px-4 py-2 text-center text-red-500">{item.stockActual}</td>
+                        <td className="px-4 py-2 text-center text-red-600 font-semibold">
+                          -{item.cantidadSolicitada - item.stockActual}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setDuplicateErrorData(null)}
+                className="px-5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={!!parityErrorData} onClose={() => setParityErrorData(null)} title="No se puede copiar la venta">
+        {parityErrorData && (
+          <div>
+            <p className="text-sm text-zinc-900 mb-4">
+              La factura no cumple las condiciones para ser copiada:
+            </p>
+
+            <div className="space-y-3 mb-5">
+              {!parityErrorData.itemsEsPar && (
+                <div className="p-3 border border-red-200 rounded-lg bg-red-50">
+                  <p className="text-sm text-red-700">
+                    Tiene <span className="font-semibold">{parityErrorData.cantidadItems}</span> productos  se requiere un numero par.
+                  </p>
+                </div>
+              )}
+              {!parityErrorData.totalEsPar && (
+                <div className="p-3 border border-red-200 rounded-lg bg-red-50">
+                  <p className="text-sm text-red-700">
+                    El total es <span className="font-semibold">${parityErrorData.totalFactura?.toFixed(2)}</span> — se requiere un total par.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setParityErrorData(null)}
+                className="px-5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         )}
       </Modal>

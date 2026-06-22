@@ -17,7 +17,7 @@ public class ClienteRepository : IClienteRepository
         int page = 1,
         int pageSize = 25)
     {
-        var query = _db.Clientes.AsNoTracking().AsQueryable();
+        var query = _db.Clientes.AsNoTracking().Where(c => c.Activo).AsQueryable();
 
         // Si hay búsqueda, filtra y devuelve hasta 50 sin paginación estricta
         if (!string.IsNullOrWhiteSpace(search))
@@ -34,11 +34,6 @@ public class ClienteRepository : IClienteRepository
                     c.Apellido.Contains(search) ||
                     c.Identificacion.Contains(search));
 
-            var searchResults = await query
-                .OrderBy(c => c.Apellido).ThenBy(c => c.Nombre)
-                .Take(50)
-                .ToListAsync();
-            return (searchResults, searchResults.Count);
         }
 
         // Sin búsqueda: paginación del servidor
@@ -57,7 +52,7 @@ public class ClienteRepository : IClienteRepository
     }
 
     public async Task<Cliente?> GetByIdAsync(int id) =>
-        await _db.Clientes.FindAsync(id);
+    await _db.Clientes.FirstOrDefaultAsync(c => c.Id == id && c.Activo);
 
     public async Task<Cliente?> GetByIdentificacionAsync(string identificacion) =>
         await _db.Clientes.FirstOrDefaultAsync(c => c.Identificacion == identificacion);
@@ -78,6 +73,22 @@ public class ClienteRepository : IClienteRepository
     public async Task<bool> ExisteEmailAsync(string email, int? excludeId = null)
     {
         var q = _db.Clientes.Where(c => c.Email == email);
+        if (excludeId.HasValue)
+            q = q.Where(c => c.Id != excludeId.Value);
+        return await q.AnyAsync();
+    }
+
+    public async Task<bool> ExisteIdentificacionAsync(string identificacion, int? excludeId = null)
+    {
+        var q = _db.Clientes.Where(c => c.Identificacion == identificacion);
+        if (excludeId.HasValue)
+            q = q.Where(c => c.Id != excludeId.Value);
+        return await q.AnyAsync();
+    }
+
+    public async Task<bool> ExisteTelefonoAsync(string telefono, int? excludeId = null)
+    {
+        var q = _db.Clientes.Where(c => c.Telefono == telefono);
         if (excludeId.HasValue)
             q = q.Where(c => c.Id != excludeId.Value);
         return await q.AnyAsync();

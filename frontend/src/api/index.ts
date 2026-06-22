@@ -115,6 +115,7 @@ export const usuariosApi = {
   getAll: () => api.get<Usuario[]>('/usuarios'),
   create: (data: any) => api.post<Usuario>('/usuarios', data),
   update: (id: number, data: any) => api.put<Usuario>(`/usuarios/${id}`, data),
+  delete: (id: number) => api.delete(`/usuarios/${id}`),
   toggleBloqueo: (id: number) => api.post(`/usuarios/${id}/toggle-bloqueo`),
   getRoles: () => api.get<Rol[]>('/usuarios/roles'),
 };
@@ -229,6 +230,43 @@ export interface CrearFacturaRequest {
   items: { productoId: number; cantidad: number }[];
 }
 
+export interface DuplicarFacturaItemDto {
+  productoId: number;
+  productoCodigo: string;
+  productoNombre: string;
+  cantidadSolicitada: number;
+  stockActual: number;
+  precioUnitario: number;
+  tieneStock: boolean;
+}
+
+export interface DuplicarFacturaResponse {
+  clienteId: number;
+  clienteNombre: string;
+  items: DuplicarFacturaItemDto[];
+  todosDisponibles: boolean;
+}
+
+export interface VerificarParidadResponse {
+  facturaId: number;
+  numeroFactura: string;
+  cantidadItems: number;
+  totalFactura: number;
+  itemsEsPar: boolean;
+  totalEsPar: boolean;
+  puedeCopiarse: boolean;
+  clienteId: number;
+  clienteNombre: string;
+  items: {
+    productoId: number;
+    cantidad: number;
+    precioUnitario: number;
+    productoCodigo?: string;
+    productoNombre?: string;
+    stockActual?: number;
+  }[];
+}
+
 export const facturasApi = {
   getAll: (params?: { desde?: string; hasta?: string; search?: string; searchBy?: string }) =>
     api.get<Factura[]>('/facturas', { params }),
@@ -239,6 +277,10 @@ export const facturasApi = {
     api.get(`/facturas/${id}/pdf`, { responseType: 'blob' }),
   reconstruir: (numero: string) =>
     api.get<FacturaSnapshot>(`/facturas/reconstruir/${numero}`),
+  duplicar: (id: number) =>
+    api.get<DuplicarFacturaResponse>(`/facturas/${id}/duplicar`),
+  verificarParidad: (id: number) =>
+    api.get<VerificarParidadResponse>(`/facturas/${id}/verificar-paridad`),
 };
 
 let isRefreshing = false;

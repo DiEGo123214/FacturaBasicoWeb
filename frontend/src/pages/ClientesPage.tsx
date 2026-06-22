@@ -7,12 +7,14 @@ import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, UserGroupIcon, Cl
 import ConfirmModal from '../components/ConfirmModal';
 import TablePagination from '../components/TablePagination';
 import { useDebounce } from '../hooks/useDebounce';
+import { getSearchInputMode, getSearchMaxLength, getSearchPlaceholder, sanitizeSearchValue, type SearchInputKind } from '../utils/searchInput';
+import { FIELD_LENGTHS } from '../utils/fieldLengths';
+import { isValidEcuadorianCedula } from '../utils/ecuadorCedula';
 
 // ─── Helpers de validación (frontend) ───────────────────────────────────────
-const SOLO_LETRAS  = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ]+$/; // Sin espacios en clientes
-const EMAIL_REGEX  = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const CEDULA_EC    = /^(0[1-9]|1[0-9]|2[0-4])\d{8}$/;
-const TELEFONO_RX  = /^09\d{8}$/;
+const SOLO_LETRAS = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ]+$/; // Sin espacios en clientes
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const TELEFONO_RX = /^09\d{8}$/;
 
 // Primera letra mayúscula, resto minúsculas
 const capitalizeFirst = (s: string) =>
@@ -23,8 +25,8 @@ function validarCampos(form: ClienteForm): Record<string, string> {
 
   if (!form.identificacion)
     err.identificacion = 'La cédula es requerida.';
-  else if (!CEDULA_EC.test(form.identificacion))
-    err.identificacion = 'Debe ser cédula ecuatoriana (provincia 01–24, 10 dígitos).';
+  else if (!isValidEcuadorianCedula(form.identificacion))
+    err.identificacion = 'Debe ser cédula ecuatoriana válida y pasar el dígito verificador.';
 
   if (!form.nombre)
     err.nombre = 'El nombre es requerido.';
@@ -109,6 +111,8 @@ export default function ClientesPage() {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState<number | null>(null);
+  const [initialForm, setInitialForm] = useState<ClienteForm | null>(null);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,22 +138,56 @@ export default function ClientesPage() {
   useEffect(() => { setCurrentPage(1); }, [debouncedSearch, searchBy]);
 
   const totalPages = Math.ceil(totalItems / pageSize);
+  const searchKind: SearchInputKind = searchBy === 'identificacion' ? 'cedula' : 'letras';
+
+  const handleSearchByChange = (value: string) => {
+    const nextKind: SearchInputKind = value === 'identificacion' ? 'cedula' : 'letras';
+    setSearchBy(value);
+    setSearch(sanitizeSearchValue(search, nextKind));
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(sanitizeSearchValue(value, searchKind));
+  };
 
   const openCreate = useCallback(() => {
     setEditing(null);
     setForm(emptyForm);
     setFieldErrors({});
     setTouched({});
+    setInitialForm(emptyForm);
     setModalOpen(true);
   }, []);
 
   const openEdit = useCallback((c: Cliente) => {
     setEditing(c);
-    setForm({ identificacion: c.identificacion, nombre: c.nombre, apellido: c.apellido, direccion: c.direccion || '', telefono: c.telefono || '', email: c.email || '', activo: c.activo });
+    const initialData = { identificacion: c.identificacion, nombre: c.nombre, apellido: c.apellido, direccion: c.direccion || '', telefono: c.telefono || '', email: c.email || '', activo: c.activo };
+    setForm(initialData);
     setFieldErrors({});
     setTouched({});
+    setInitialForm(initialData);
     setModalOpen(true);
   }, []);
+
+  const requestCloseModal = () => {
+    if (!initialForm) {
+      setModalOpen(false);
+      return;
+    }
+    const hasChanges = (Object.keys(initialForm) as (keyof ClienteForm)[]).some(
+      key => form[key] !== initialForm[key]
+    );
+    if (hasChanges) {
+      setConfirmCloseOpen(true);
+    } else {
+      setModalOpen(false);
+    }
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setConfirmCloseOpen(false);
+  };
 
   const handleChange = (field: keyof ClienteForm, value: string) => {
     let sanitized = value;
@@ -164,6 +202,9 @@ export default function ClientesPage() {
     // Dirección: primera letra en mayúscula automáticamente
     if (field === 'direccion' && value.length > 0) {
       sanitized = value.charAt(0).toUpperCase() + value.slice(1);
+    }
+    if (field === 'email') {
+      sanitized = value.slice(0, FIELD_LENGTHS.email);
     }
     const next = { ...form, [field]: sanitized };
     setForm(next);
@@ -227,30 +268,29 @@ export default function ClientesPage() {
   };
 
   const inputClass = (field: string) =>
-    `w-full bg-zinc-50 border px-5 py-3.5 rounded-xl text-zinc-800 text-sm font-bold outline-none transition-all ${
-      touched[field] && fieldErrors[field]
-        ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
-        : 'border-zinc-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100'
+    `w-full bg-zinc-50 border px-5 py-3.5 rounded-xl text-zinc-800 text-sm font-bold outline-none transition-all ${touched[field] && fieldErrors[field]
+      ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+      : 'border-zinc-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100'
     }`;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm">
         <div className="flex items-center gap-4">
-           <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/20">
-             <UserGroupIcon className="w-7 h-7 text-white" />
-           </div>
-           <div>
+          <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/20">
+            <UserGroupIcon className="w-7 h-7 text-white" />
+          </div>
+          <div>
             <h1 className="text-2xl font-black text-zinc-800 tracking-tighter">Directorio de <span className="text-emerald-600">Clientes</span></h1>
             <p className="text-zinc-400 font-bold text-[10px] uppercase tracking-widest">Base de Datos de Clientes</p>
-           </div>
+          </div>
         </div>
-        
+
         <div className="flex items-center gap-6">
           <button onClick={openCreate} className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-black flex items-center gap-2 hover:bg-emerald-700 transition-all text-[11px] uppercase tracking-widest shadow-lg shadow-emerald-600/20">
             <PlusIcon className="w-4 h-4" /> NUEVO
           </button>
-          
+
           <div className="flex items-center gap-3 bg-emerald-50 px-6 py-3 rounded-2xl border border-emerald-100">
             <ClockIcon className="w-6 h-6 text-emerald-600 animate-pulse" />
             <div className="text-right">
@@ -267,7 +307,7 @@ export default function ClientesPage() {
 
       <div className="bg-white p-1.5 border border-zinc-200 rounded-2xl flex items-center gap-2 shadow-sm">
         <div className="relative">
-          <select value={searchBy} onChange={e => setSearchBy(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 w-[150px]">
+          <select value={searchBy} onChange={e => handleSearchByChange(e.target.value)} className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 w-[150px]">
             <option value="identificacion" className="bg-white text-zinc-800">Cédula</option>
             <option value="nombre" className="bg-white text-zinc-800">Nombre</option>
             <option value="apellido" className="bg-white text-zinc-800">Apellido</option>
@@ -278,20 +318,22 @@ export default function ClientesPage() {
           <MagnifyingGlassIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             type="text"
-            placeholder="Buscar..."
+            placeholder={getSearchPlaceholder(searchKind)}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            maxLength={getSearchMaxLength(searchKind)}
+            inputMode={getSearchInputMode(searchKind)}
             className="w-full pl-12 pr-4 py-2.5 bg-transparent text-zinc-800 text-sm font-bold placeholder:text-zinc-400 outline-none"
           />
         </div>
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
-        <ClientesTable 
-          paginatedClientes={clientes} 
-          loading={loading} 
-          openEdit={openEdit} 
-          handleDelete={handleDelete} 
+        <ClientesTable
+          paginatedClientes={clientes}
+          loading={loading}
+          openEdit={openEdit}
+          handleDelete={handleDelete}
         />
         <TablePagination
           currentPage={currentPage}
@@ -303,7 +345,7 @@ export default function ClientesPage() {
         />
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="REGISTRO DE CLIENTE">
+      <Modal isOpen={modalOpen} onClose={requestCloseModal} title="REGISTRO DE CLIENTE">
         <div className="bg-white rounded-2xl p-8 shadow-xl text-zinc-800 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -z-10 pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
 
@@ -338,6 +380,7 @@ export default function ClientesPage() {
                   value={form.nombre}
                   onChange={e => handleChange('nombre', e.target.value)}
                   onBlur={() => handleBlur('nombre')}
+                  maxLength={FIELD_LENGTHS.nombrePersona}
                   className={inputClass('nombre')}
                   placeholder="Ej: Juan"
                 />
@@ -350,6 +393,7 @@ export default function ClientesPage() {
                   value={form.apellido}
                   onChange={e => handleChange('apellido', e.target.value)}
                   onBlur={() => handleBlur('apellido')}
+                  maxLength={FIELD_LENGTHS.apellidoPersona}
                   className={inputClass('apellido')}
                   placeholder="Ej: Pérez"
                 />
@@ -362,7 +406,7 @@ export default function ClientesPage() {
                   value={form.telefono}
                   onChange={e => handleChange('telefono', e.target.value)}
                   onBlur={() => handleBlur('telefono')}
-                  maxLength={10}
+                  maxLength={FIELD_LENGTHS.telefono}
                   inputMode="numeric"
                   className={inputClass('telefono')}
                   placeholder="Ej: 0991234567"
@@ -377,6 +421,7 @@ export default function ClientesPage() {
                   value={form.email}
                   onChange={e => handleChange('email', e.target.value)}
                   onBlur={() => handleBlur('email')}
+                  maxLength={FIELD_LENGTHS.email}
                   className={inputClass('email')}
                   placeholder="Ej: correo@dominio.com"
                 />
@@ -388,6 +433,7 @@ export default function ClientesPage() {
                 <input
                   value={form.direccion}
                   onChange={e => handleChange('direccion', e.target.value)}
+                  maxLength={FIELD_LENGTHS.direccion}
                   className="w-full bg-zinc-50 border border-zinc-200 px-5 py-3.5 rounded-xl text-zinc-800 text-sm font-bold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
                   placeholder="Calle, número, sector..."
                 />
@@ -395,7 +441,7 @@ export default function ClientesPage() {
             </div>
 
             <div className="flex gap-4 pt-4 border-t-2 border-emerald-500/10">
-              <button type="button" onClick={() => setModalOpen(false)} disabled={saving} className="flex-1 py-3.5 border-2 border-zinc-200 text-zinc-500 hover:bg-zinc-50 rounded-xl text-[10px] font-black uppercase transition-all disabled:opacity-50">CANCELAR</button>
+              <button type="button" onClick={requestCloseModal} disabled={saving} className="flex-1 py-3.5 border-2 border-zinc-200 text-zinc-500 hover:bg-zinc-50 rounded-xl text-[10px] font-black uppercase transition-all disabled:opacity-50">CANCELAR</button>
               <button type="submit" disabled={saving} className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-600/20 transition-all">
                 {saving ? 'GUARDANDO...' : 'GUARDAR'}
               </button>
@@ -409,11 +455,20 @@ export default function ClientesPage() {
         onClose={() => setConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="ELIMINAR"
-        message="¿Confirmar?"
+        message="¿Estás seguro? Perderás los datos ingresados."
         confirmText="ELIMINAR"
         type="danger"
+      />
+
+      <ConfirmModal
+        isOpen={confirmCloseOpen}
+        onClose={() => setConfirmCloseOpen(false)}
+        onConfirm={closeModal}
+        title="SALIR"
+        message="¿Seguro que deseas salir? Se borrarán los datos ingresados."
+        confirmText="SÍ, SALIR"
+        type="warning"
       />
     </div>
   );
 }
-

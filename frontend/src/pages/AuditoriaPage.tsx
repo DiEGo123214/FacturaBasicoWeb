@@ -9,6 +9,8 @@ import {
   ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import TablePagination from '../components/TablePagination';
+import { getSearchInputMode, getSearchMaxLength, getSearchPlaceholder, sanitizeSearchValue, type SearchInputKind } from '../utils/searchInput';
+import { FIELD_LENGTHS } from '../utils/fieldLengths';
 
 export default function AuditoriaPage() {
   const [movimientos, setMovimientos] = useState<MovimientoStock[]>([]);
@@ -24,6 +26,42 @@ export default function AuditoriaPage() {
   // Pagination States
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  const today = new Date().toISOString().split('T')[0];
+  const searchKind: SearchInputKind =
+    searchBy === 'usuario' ? 'usuario' :
+    searchBy === 'referencia' ? 'referencia' :
+    'producto';
+
+  const getAuditoriaSearchKind = (value: string): SearchInputKind => {
+    if (value === 'usuario') return 'usuario';
+    if (value === 'referencia') return 'referencia';
+    return 'producto';
+  };
+
+  const handleSearchByChange = (value: string) => {
+    const nextKind = getAuditoriaSearchKind(value);
+    setSearchBy(value);
+    setSearch(sanitizeSearchValue(search, nextKind));
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(sanitizeSearchValue(value, searchKind));
+  };
+
+  const handleDesdeChange = (value: string) => {
+    setDesde(value);
+    if (hasta && value && hasta < value) {
+      setHasta(value);
+    }
+  };
+
+  const handleHastaChange = (value: string) => {
+    if (desde && value && value < desde) {
+      setHasta(desde);
+      return;
+    }
+    setHasta(value);
+  };
 
   const loadMovimientos = async () => {
     try {
@@ -121,7 +159,7 @@ export default function AuditoriaPage() {
             <div className="relative shrink-0">
               <select
                 value={searchBy}
-                onChange={e => setSearchBy(e.target.value)}
+                onChange={e => handleSearchByChange(e.target.value)}
                 className="appearance-none bg-emerald-600 text-white pl-4 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none cursor-pointer shadow-md shadow-emerald-600/20 w-[150px]"
               >
                 <option value="producto" className="bg-white text-zinc-800">Producto</option>
@@ -134,25 +172,36 @@ export default function AuditoriaPage() {
               <MagnifyingGlassIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input
                 type="text"
-                placeholder="Buscar..."
+                placeholder={getSearchPlaceholder(searchKind)}
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => handleSearchChange(e.target.value)}
+                maxLength={searchBy === 'producto' ? FIELD_LENGTHS.searchProducto : getSearchMaxLength(searchKind)}
+                inputMode={getSearchInputMode(searchKind)}
                 className="w-full pl-12 pr-4 py-2.5 bg-transparent text-zinc-800 text-sm font-bold placeholder:text-zinc-400 outline-none"
               />
             </div>
           </div>
-          <input
-            type="date"
-            value={desde}
-            onChange={e => setDesde(e.target.value)}
-            className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
-          />
-          <input
-            type="date"
-            value={hasta}
-            onChange={e => setHasta(e.target.value)}
-            className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
-          />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Desde</label>
+            <input
+              type="date"
+              value={desde}
+              max={today}
+              onChange={e => handleDesdeChange(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Hasta</label>
+            <input
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              max={today}
+              onChange={e => handleHastaChange(e.target.value)}
+              className="bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-xl text-zinc-800 text-xs font-bold cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 

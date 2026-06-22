@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using POS.Application.Features.Usuarios.Commands;
 using POS.Application.Features.Usuarios.Queries;
+using System.Security.Claims;
 
 namespace POS.API.Controllers;
 
@@ -40,8 +41,29 @@ public class UsuariosController : ControllerBase
     [HttpPost("{id}/toggle-bloqueo")]
     public async Task<IActionResult> ToggleBloqueo(int id)
     {
+        var currentUserIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(currentUserIdValue, out var currentUserId))
+            return Forbid();
+
+        if (currentUserId == id)
+            return BadRequest(new { error = "No puedes bloquear tu propia cuenta." });
+
         var result = await _mediator.Send(new ToggleBloqueoCommand(id));
         return result ? Ok() : NotFound();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var currentUserIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(currentUserIdValue, out var currentUserId))
+            return Forbid();
+
+        if (currentUserId == id)
+            return BadRequest(new { error = "No puedes eliminar tu propio usuario administrador." });
+
+        var result = await _mediator.Send(new DeleteUsuarioCommand(id));
+        return result ? NoContent() : NotFound();
     }
 
     [HttpGet("roles")]

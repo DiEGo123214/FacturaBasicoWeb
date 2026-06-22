@@ -7,3 +7,5 @@ public record GetFacturasQuery(DateTime? Desde = null, DateTime? Hasta = null, s
 public record GetFacturaByIdQuery(int Id) : IRequest<FacturaDto?>;
 public record GetFacturaReconstruidaQuery(string NumeroFactura) : IRequest<FacturaSnapshotDto?>;
 public record GenerarPdfFacturaQuery(int FacturaId) : IRequest<byte[]>;
+public record GetFacturaParaDuplicarQuery(int Id) : IRequest<DuplicarFacturaDto?>;
+public record GetVerificarParidadQuery(int Id) : IRequest<VerificarParidadDto?>;
